@@ -8,7 +8,7 @@ def copy_to_clipboard(text):
 # Show title and description.
 st.title("💬 Chatbot")
 st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
+    "This is a simple chatbot that uses OpenAI's GPT-4 model to generate responses. "
     "Chat with the bot and provide feedback using the thumbs up/down buttons. "
     "You can learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
 )
@@ -53,7 +53,7 @@ if prompt := st.chat_input("What is your query human?"):
 
     # Generate a response using the OpenAI API.
     stream = client.chat.completions.create(
-        model="gpt-3.5-turbo",
+            model="gpt-4",
         messages=[
             {"role": m["role"], "content": m["content"]}
             for m in st.session_state.messages
