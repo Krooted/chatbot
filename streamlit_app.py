@@ -1,20 +1,19 @@
 import streamlit as st
 import pyperclip
 import openai
-import vanna as vn
+import pandas as pd
 from vanna.remote import VannaDefault
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
 def copy_to_clipboard(text):
     pyperclip.copy(text)
-    st.success("Text copied to clipboard!")
 
 # Initialize Vanna AI with OpenAI
 # email = st.secrets["VANNA_AI_EMAIL"]
 api_key = st.secrets["VANNA_AI_API_KEY"]
 model = "thrive" 
-vanna = VannaDefault(api_key=api_key, model=model)
+vn = VannaDefault(api_key=api_key, model=model)
 
 # PostgreSQL Connection
 conn = psycopg2.connect(
@@ -24,6 +23,14 @@ conn = psycopg2.connect(
     user=st.secrets["postgres"]["user"],
     password=st.secrets["postgres"]["password"],
     cursor_factory=RealDictCursor
+)
+
+vn.connect_to_postgres(
+    host=st.secrets["postgres"]["host"],
+    dbname=st.secrets["postgres"]["database"],
+    user=st.secrets["postgres"]["user"],
+    password=st.secrets["postgres"]["password"], 
+    port=st.secrets["postgres"]["port"]
 )
 
 # Train Vanna on database schema
@@ -66,13 +73,16 @@ def train_vanna():
         ddl.append(');')
     
     # Sample SQL query for training
-    sample_sql_query = "select count(*) from patients"
+    sample_sql_query = "select count(*) from public.patients; select * from medical_records;;"
 
-    vanna.train('\n'.join(ddl), sample_sql_query)
+    vn.train('\n'.join(ddl), sample_sql_query)
     cursor.close()
 
 # Train Vanna before user interaction
 train_vanna()
+
+df_test = vn.run_sql("SELECT 1")
+print(df_test)
 
 # Create an OpenAI client for general chat
 # openai.api_key = st.secrets["OPENAI_API_KEY"]
@@ -135,12 +145,35 @@ if prompt := st.chat_input("What is your query human?"):
 
        # Ask Vanna the most recent question from the most recent chat entry
     most_recent_question = st.session_state.messages[-1]["content"]
-    vanna_response = vanna.ask(most_recent_question)
-    st.session_state.messages.append({"role": "assistant", "content": vanna_response})
 
-    # Display Vanna's response
+    # allow_llm_to_see_data=True allows Vanna to see the database data... This occured when I asked it which patients were female
+    most_recent_sql = vn.generate_sql(most_recent_question, allow_llm_to_see_data=True)
+    print(most_recent_sql)
+    vanna_response = vn.run_sql(most_recent_sql) 
+    print(vanna_response)
+    # this doesnt appear to return anything different then the response itself
+    vanna_follow_up_questions = vn.generate_followup_questions(most_recent_question, most_recent_sql, vanna_response)
+    print(vanna_follow_up_questions)
+    # vanna_plotly_code = vn.generate_plotly_code(vanna_response)
+    # vanna_plotly_figure = vn.get_plotly_figure(vanna_plotly_code)
+    
+    # Append the response and follow-up questions to the chat
+    st.session_state.messages.append({"role": "assistant", "content": vanna_response})
+    st.session_state.messages.append({"role": "assistant", "content": vanna_follow_up_questions})
+     # Display Vanna's response
+    # with st.chat_message("assistant"):
+    #     st.markdown(vanna_response)
+    # Display Vanna's response in a grid-like format
     with st.chat_message("assistant"):
-        st.markdown(vanna_response)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("### Response")
+            df = pd.DataFrame(vanna_response)
+            st.dataframe(df)
+        with col2:
+            st.markdown("### Follow-up Questions")
+            for question in vanna_follow_up_questions:
+                st.markdown(f"- {question}")
 
     # Stream the response to the chat using `st.write_stream`, then store it in 
     # session state.
@@ -149,10 +182,10 @@ if prompt := st.chat_input("What is your query human?"):
     # st.session_state.messages.append({"role": "assistant", "content": response.choices[0].message["content"]})
 
     # Add thumbs up and thumbs down buttons after the assistant's response.
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("👍", key=f"thumbs_up_{len(st.session_state.messages)}"):
-            st.session_state.messages[-1]["feedback"] = "thumbs_up"
-    with col2:
-        if st.button("👎", key=f"thumbs_down_{len(st.session_state.messages)}"):
-            st.session_state.messages[-1]["feedback"] = "thumbs_down"
+    # col1, col2 = st.columns([1, 1])
+    # with col1:
+    #     if st.button("👍", key=f"thumbs_up_{len(st.session_state.messages)}"):
+    #         st.session_state.messages[-1]["feedback"] = "thumbs_up"
+    # with col2:
+    #     if st.button("👎", key=f"thumbs_down_{len(st.session_state.messages)}"):
+    #         st.session_state.messages[-1]["feedback"] = "thumbs_down"
